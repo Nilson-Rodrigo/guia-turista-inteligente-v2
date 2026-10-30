@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "dompurify": "^3.4.17",
     "leaflet": "^1.9.4",
     "lucide-react": "latest",
+    "marked": "^18.1.2",
     "react": "latest",
     "react-dom": "latest",
     "react-leaflet": "^5.0.0",

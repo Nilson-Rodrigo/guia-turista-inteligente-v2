@@ -3,6 +3,7 @@ import { api, streamGuia } from "./services/api";
 import { getCurrentPosition, haversineKm } from "./services/geolocation";
 import RoteiroForm, { initialForm } from "./components/RoteiroForm";
 import MapaRota from "./components/MapaRota";
+import MarkdownContent from "./components/MarkdownContent";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 const ROOT = "/api/v1/roteiros";
 const money = (n) =>
@@ -32,6 +33,7 @@ export default function App() {
     [vehicle, setVehicle] = useState(initialForm);
   function clear() {
     streamController.current?.abort();
+    setError("");
     setHistory([]);
     setSelected(null);
     setMapa(null);
@@ -47,9 +49,11 @@ export default function App() {
     if (u) setHistory(await api(ROOT, { user: u }));
   }
   async function visitor() {
+    setError("");
     try {
       const r = await api("/api/v1/auth/demo", { method: "POST" });
       activate({ ...r.usuario, expiresAt: Date.now() + r.expires_in * 1000 });
+      setError("");
     } catch (e) {
       setError(e.message);
     }
@@ -147,6 +151,7 @@ export default function App() {
     };
   }, [user]);
   async function gps() {
+    setError("");
     try {
       const position = await getCurrentPosition();
       const items = destinos
@@ -157,6 +162,7 @@ export default function App() {
       setSuggestions(items);
       if (!items.length)
         setError("Nenhum destino do catálogo atende ao filtro.");
+      else setError("");
     } catch (e) {
       setError(e.message);
     }
@@ -195,6 +201,7 @@ export default function App() {
     setMapa({ ...route, paradas });
   }
   async function showTrip(trip, v = vehicle) {
+    setError("");
     streamController.current?.abort();
     setGuia("");
     setSelected(trip);
@@ -225,6 +232,7 @@ export default function App() {
     setRoutes(all);
     setRouteIndex(0);
     await applyRoute(data, v);
+    setError("");
   }
   async function submit(e) {
     e.preventDefault();
@@ -250,6 +258,7 @@ export default function App() {
         requestId: response.headers.get("X-Request-ID"),
         total: Math.round(performance.now() - start),
       });
+      setError("");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -257,6 +266,7 @@ export default function App() {
     }
   }
   async function guide() {
+    setError("");
     streamController.current?.abort();
     const controller = new AbortController();
     streamController.current = controller;
@@ -278,11 +288,13 @@ export default function App() {
       );
     } catch (e) {
       if (e.name !== "AbortError") setError(e.message);
+      else setError("");
     } finally {
       if (streamController.current === controller) setGuideLoading(false);
     }
   }
   async function visited(id) {
+    setError("");
     try {
       const visits = selected.visitas.includes(id)
         ? selected.visitas.filter((v) => v !== id)
@@ -294,11 +306,13 @@ export default function App() {
       });
       setSelected(trip);
       await loadHistory();
+      setError("");
     } catch (e) {
       setError(e.message);
     }
   }
   async function gpx() {
+    setError("");
     try {
       const r = await api(ROOT + "/exportar/gpx", {
         method: "POST",
@@ -317,6 +331,7 @@ export default function App() {
     }
   }
   async function share() {
+    setError("");
     try {
       const r = await api(ROOT + "/compartilhar", {
         method: "POST",
@@ -324,6 +339,7 @@ export default function App() {
         body: { canal: "whatsapp", roteiro: selected },
       });
       window.open(r.link, "_blank", "noopener,noreferrer");
+      setError("");
     } catch (e) {
       setError(e.message);
     }
@@ -459,6 +475,7 @@ export default function App() {
                       setRouteIndex(index);
                       try {
                         await applyRoute(routes[index], vehicle);
+                        setError("");
                       } catch (err) {
                         setError(err.message);
                       }
@@ -550,9 +567,8 @@ export default function App() {
               <article
                 className="guide-panel"
                 aria-live="polite"
-                style={{ whiteSpace: "pre-wrap" }}
               >
-                {guia}
+                <MarkdownContent>{guia}</MarkdownContent>
               </article>
               <h3>Atrativos</h3>
               {selected.atrativos.length ? (

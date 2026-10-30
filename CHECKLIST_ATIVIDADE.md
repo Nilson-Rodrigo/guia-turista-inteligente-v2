@@ -51,6 +51,7 @@
 - [x] Criar primeiro teste de contrato do backend.
 - [x] Cobrir backend com `pytest tests/ -v`.
 - [x] Cobrir frontend com Vitest.
-- [ ] Executar lint e type checks.
-- [ ] Testar backend na porta 8001 e frontend na porta 5173.
+- [x] Executar lint.
+- [ ] Configurar e executar type checks automatizados.
+- [ ] Testar o processo atualizado com backend na porta 8001 e frontend na porta 5173.
 - [ ] Preparar demonstracao individual por responsabilidade.

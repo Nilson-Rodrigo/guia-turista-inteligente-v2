@@ -38,6 +38,15 @@ def headers(client):return {'X-User-Id':client.post('/api/v1/auth/demo').json()[
 DATA={'origem_cidade':'Recife','origem_uf':'pe','destino_cidade':'Salvador','destino_uf':'ba'}
 def test_health(client):assert client.get('/healthz').json()=={'status':'ok'}
 def test_requires_session(client):assert client.post('/api/v1/roteiros/planejar',json=DATA).status_code==401
+@pytest.mark.parametrize('origin',['http://localhost:5173','http://127.0.0.1:5173','http://localhost:5174','http://127.0.0.1:5174'])
+def test_cors_allows_local_frontend_hosts(client,origin):
+    response=client.get('/healthz',headers={'Origin':origin})
+    assert response.headers.get('access-control-allow-origin')==origin
+
+def test_telemetry_summary_returns_circuit_states(client,headers):
+    response=client.get('/api/v1/telemetria/resumo',headers=headers)
+    assert response.status_code==200
+    assert response.json()['circuitos']['gemini']=='closed'
 
 def test_history_isolation_delete(client,headers):
     r=client.post('/api/v1/roteiros/planejar',json=DATA,headers=headers);assert r.status_code==200,r.text

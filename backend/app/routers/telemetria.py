@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
@@ -8,8 +10,15 @@ from ..services.storage import DATA_FILE, _read
 router = APIRouter(prefix="/api/v1/telemetria", tags=["Telemetria"])
 
 
+class ResumoTelemetria(TypedDict):
+    roteiros_gerados: int
+    conexoes_ativas: int
+    status: str
+    circuitos: dict[str, str]
+
+
 @router.get("/resumo")
-async def resumo_telemetria() -> dict[str, int | str]:
+async def resumo_telemetria() -> ResumoTelemetria:
     data = _read()
     total = int(data.get("total_roteiros", 0))
     return {

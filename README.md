@@ -102,7 +102,7 @@ npm run lint
 npm run build
 ```
 
-Inclui teste de fluxo da interface com APIs simuladas. Validação desta entrega: 13 testes de backend e 8 de frontend aprovados; build e lint aprovados. Testes de backend usam `httpx.MockTransport`, sem depender da disponibilidade da internet.
+Inclui teste de fluxo da interface com APIs simuladas. Validação desta entrega: 18 testes de backend e 12 de frontend aprovados; build e lint aprovados. O editor não apontou diagnósticos nos arquivos alterados, mas ainda não há type check automatizado configurado. Testes de backend usam `httpx.MockTransport`, sem depender da disponibilidade da internet.
 
 ## Divisão para apresentação
 
@@ -112,3 +112,10 @@ Inclui teste de fluxo da interface com APIs simuladas. Validação desta entrega
 4. Streaming/QA: `gemini.py`, SSE, `gpx.py`, métricas e suítes de testes.
 
 Cada aluno deve estudar e conseguir defender o código que apresenta. Este ZIP não inclui `.venv`, `node_modules`, chaves ou dados pessoais.
+
+## Pendências para a entrega final
+
+- Integrar um catálogo real de postos e eletropostos ao mapa; as paradas atuais são projeções de autonomia.
+- Configurar um type checker automatizado para Python e JavaScript/React.
+- Repetir o teste manual com os processos atualizados nas portas 8001 e 5173; durante esta validação elas já estavam ocupadas, então foram usadas portas alternativas.
+- Definir a divisão da demonstração individual entre os integrantes da equipe.

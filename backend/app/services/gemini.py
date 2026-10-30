@@ -1,7 +1,10 @@
 import json
+import logging
 from google import genai
 from ..core.config import get_settings
 from ..core.circuit_breaker import providers_breakers
+
+logger = logging.getLogger(__name__)
 
 def evento(chunk="", done=False, **extra):
     return "data: " + json.dumps(dict(chunk=chunk, done=done, **extra), ensure_ascii=False) + "\n\n"
@@ -23,6 +26,7 @@ Gastronomia: 1 frase com 2 ou 3 sabores. Orientações climáticas: 1 frase base
                     yield evento(chunk.text)
         breaker.record_success()
         yield evento(done=True)
-    except Exception:
+    except Exception as error:
         breaker.record_failure()
+        logger.warning("Gemini guide generation failed: %s", type(error).__name__)
         yield evento("\nServiço de IA indisponível no momento. Confira a chave, o modelo e a cota.", True, fallback=True)

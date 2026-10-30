@@ -2,8 +2,8 @@
   "versao_schema": "1.0",
   "descricao": "Base consolidada de roteiros turísticos e telemetria por usuário",
   "atualizado_em": "2026-09-19T00:00:00.000000",
-  "total_usuarios": 1,
-  "total_roteiros": 1,
+  "total_usuarios": 6,
+  "total_roteiros": 6,
   "provedores": {
     "geocoding": "Open-Meteo Geocoding API",
     "previsao_tempo": "Open-Meteo Forecast API",
@@ -51,6 +51,210 @@
           "gastronomia": [
             "Maria Isabel",
             "Paçoca de carne"
+          ],
+          "visitas": []
+        }
+      ]
+    },
+    "visitante-d567b6ed62c74405a6889be43ae9c1ad": {
+      "roteiros": [
+        {
+          "id": "25e6186af65e440f88d2a5b216fd0188",
+          "origem": "Fortaleza - CE",
+          "destino": "São Luís - MA",
+          "origem_coordenadas": [
+            -3.71722,
+            -38.54306
+          ],
+          "destino_coordenadas": [
+            -2.52972,
+            -44.30278
+          ],
+          "clima": {
+            "temperatura": "28.4 °C",
+            "sensacao": "31.7 °C",
+            "umidade": "72 %",
+            "vento": "14.9 km/h"
+          },
+          "percurso": {
+            "distancia": "886.0 km",
+            "tempo": "13h 37min"
+          },
+          "guia_status": "provider-ready",
+          "dias_estadia": 2,
+          "estilo_viagem": "Cultural",
+          "atrativos": [
+            {
+              "id": "0",
+              "nome": "Centro Histórico"
+            },
+            {
+              "id": "1",
+              "nome": "Espigão Costeiro"
+            }
+          ],
+          "gastronomia": [
+            "Arroz de cuxá",
+            "Peixe frito"
+          ],
+          "visitas": [
+            "0",
+            "1"
+          ]
+        }
+      ]
+    },
+    "visitante-a52e1350a1684078a6964526d20a1f48": {
+      "roteiros": [
+        {
+          "id": "011ffe1c6c0a49ec85e46123c475e0ca",
+          "origem": "piripiri - PI",
+          "destino": "capitão de campos - PI",
+          "origem_coordenadas": [
+            -4.27333,
+            -41.77694
+          ],
+          "destino_coordenadas": [
+            -4.45667,
+            -41.9425
+          ],
+          "clima": {
+            "temperatura": "30.1 °C",
+            "sensacao": "33.6 °C",
+            "umidade": "59 %",
+            "vento": "6.8 km/h"
+          },
+          "percurso": {
+            "distancia": "29.9 km",
+            "tempo": "25min"
+          },
+          "guia_status": "provider-ready",
+          "dias_estadia": 4,
+          "estilo_viagem": "Gastronômico",
+          "atrativos": [],
+          "gastronomia": [],
+          "visitas": []
+        }
+      ]
+    },
+    "visitante-dd62a78dc61843d5869b0a4226920c28": {
+      "roteiros": [
+        {
+          "id": "8a09ce1b62a8427d92450633d5982742",
+          "origem": "piripiri - PI",
+          "destino": "barras - PI",
+          "origem_coordenadas": [
+            -4.27333,
+            -41.77694
+          ],
+          "destino_coordenadas": [
+            -4.24444,
+            -42.29444
+          ],
+          "clima": {
+            "temperatura": "31.0 °C",
+            "sensacao": "34.5 °C",
+            "umidade": "56 %",
+            "vento": "9.7 km/h"
+          },
+          "percurso": {
+            "distancia": "67.9 km",
+            "tempo": "1h 13min"
+          },
+          "guia_status": "provider-ready",
+          "dias_estadia": 2,
+          "estilo_viagem": "Ecoturismo / Aventura",
+          "atrativos": [],
+          "gastronomia": [],
+          "visitas": []
+        }
+      ]
+    },
+    "visitante-2afbf5fbe35c4f09b8a757c39486df42": {
+      "roteiros": [
+        {
+          "id": "c25e8d415f33423995f93c50c6d6ffa2",
+          "origem": "piripiri - PI",
+          "destino": "Parnaíba - PI",
+          "origem_coordenadas": [
+            -4.27333,
+            -41.77694
+          ],
+          "destino_coordenadas": [
+            -2.90472,
+            -41.77667
+          ],
+          "clima": {
+            "temperatura": "30.0 °C",
+            "sensacao": "32.1 °C",
+            "umidade": "61 %",
+            "vento": "21.0 km/h"
+          },
+          "percurso": {
+            "distancia": "173.5 km",
+            "tempo": "2h 39min"
+          },
+          "guia_status": "provider-ready",
+          "dias_estadia": 2,
+          "estilo_viagem": "Cultural",
+          "atrativos": [
+            {
+              "id": "0",
+              "nome": "Porto das Barcas"
+            },
+            {
+              "id": "1",
+              "nome": "Delta do Parnaíba"
+            }
+          ],
+          "gastronomia": [
+            "Caranguejo",
+            "Peixada"
+          ],
+          "visitas": []
+        }
+      ]
+    },
+    "visitante-ab29e017a6a6405e8ab93ef6947ad3a8": {
+      "roteiros": [
+        {
+          "id": "c911a1ff1c394c3b91800646823d31a0",
+          "origem": "capitão de campos - PI",
+          "destino": "Fortaleza - CE",
+          "origem_coordenadas": [
+            -4.45667,
+            -41.9425
+          ],
+          "destino_coordenadas": [
+            -3.71722,
+            -38.54306
+          ],
+          "clima": {
+            "temperatura": "30.2 °C",
+            "sensacao": "33.6 °C",
+            "umidade": "58 %",
+            "vento": "19.8 km/h"
+          },
+          "percurso": {
+            "distancia": "457.8 km",
+            "tempo": "6h 45min"
+          },
+          "guia_status": "provider-ready",
+          "dias_estadia": 2,
+          "estilo_viagem": "Cultural",
+          "atrativos": [
+            {
+              "id": "0",
+              "nome": "Praia de Iracema"
+            },
+            {
+              "id": "1",
+              "nome": "Dragão do Mar"
+            }
+          ],
+          "gastronomia": [
+            "Baião de dois",
+            "Peixada"
           ],
           "visitas": []
         }

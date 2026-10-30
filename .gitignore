@@ -4,5 +4,7 @@ dist/
 __pycache__/
 .pytest_cache/
 .env
+*.swp
+*.swo
 static/data/*.json
 static/data/*.lock
