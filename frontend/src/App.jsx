@@ -501,6 +501,7 @@ export default function App() {
                       {mapa.altimetria.penalizacao_consumo_percentual}%
                     </p>
                     <svg
+                      className="elevation-profile"
                       viewBox="0 0 500 100"
                       role="img"
                       aria-label="Perfil de elevação"
