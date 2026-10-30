@@ -34,9 +34,16 @@ export function pontoNaDistancia(positions, km) {
   return positions.at(-1);
 }
 export default function MapaRota({ rota }) {
-  if (!rota?.geometria?.length)
+  const positions = (rota?.geometria || [])
+    .filter(
+      (point) =>
+        Array.isArray(point) &&
+        point.length === 2 &&
+        point.every((coordinate) => Number.isFinite(coordinate)),
+    )
+    .map(([lon, lat]) => [lat, lon]);
+  if (!positions.length)
     return <p>Mapa indisponível para este percurso.</p>;
-  const positions = rota.geometria.map(([lon, lat]) => [lat, lon]);
   return (
     <MapContainer className="route-map" center={positions[0]} zoom={6}>
       <Enquadrar positions={positions} />
@@ -44,7 +51,24 @@ export default function MapaRota({ rota }) {
         attribution="© OpenStreetMap"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <Polyline positions={positions} pathOptions={{ color: "#df5e35" }} />
+      {positions.length > 1 && (
+        <>
+          <Polyline
+            positions={positions}
+            pathOptions={{ color: "#302716", weight: 9, opacity: 0.9 }}
+          />
+          <Polyline
+            positions={positions}
+            pathOptions={{ color: "#df5e35", weight: 6, opacity: 1 }}
+          />
+        </>
+      )}
+      <CircleMarker center={positions[0]} radius={9} pathOptions={{ color: "#2468bd", fillColor: "#2468bd", fillOpacity: 1 }}>
+        <Tooltip permanent direction="top">Origem</Tooltip>
+      </CircleMarker>
+      <CircleMarker center={positions.at(-1)} radius={9} pathOptions={{ color: "#a33917", fillColor: "#a33917", fillOpacity: 1 }}>
+        <Tooltip permanent direction="top">Destino</Tooltip>
+      </CircleMarker>
       {(rota.paradas || []).map((p) => (
         <CircleMarker
           key={p.progresso_km}
