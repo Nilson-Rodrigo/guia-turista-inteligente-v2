@@ -33,9 +33,12 @@ async def obter_altimetria(
     coordenadas: list[list[float]],
 ) -> dict[str, Any]:
     if not coordenadas:
-        return calcular_perfil([])
-    amostras = coordenadas[:: max(1, len(coordenadas) // 20)][:20]
-    locations = ",".join(f"{latitude},{longitude}" for longitude, latitude in amostras)
+        return {**calcular_perfil([]), "disponivel": False}
+    from ..core.circuit_breaker import providers_breakers
+    circuito = providers_breakers["elevation"]
+    if circuito.state == "open": return {**calcular_perfil([]), "disponivel": False}
+    amostras = [coordenadas[round(i * (len(coordenadas)-1) / 19)] for i in range(20)] if len(coordenadas)>20 else coordenadas
+    locations = "|".join(f"{latitude},{longitude}" for longitude, latitude in amostras)
     try:
         response = await client.get(
             "https://api.open-elevation.com/api/v1/lookup",
@@ -43,6 +46,8 @@ async def obter_altimetria(
         )
         response.raise_for_status()
         elevations = [float(item["elevation"]) for item in response.json()["results"]]
-        return calcular_perfil(elevations)
+        circuito.record_success()
+        return {**calcular_perfil(elevations), "disponivel": True}
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
-        return calcular_perfil([])
+        circuito.record_failure()
+        return {**calcular_perfil([]), "disponivel": False}

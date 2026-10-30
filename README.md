@@ -1,102 +1,114 @@
-# 🇧🇷 Guia do Turista Inteligente (Flask + HTTPX + Google Auth + Gemini AI)
+# Guia do Turista Inteligente — Atividade 2
 
-Aplicação web desenvolvida com o microframework **Flask** e Python moderno para orquestração de APIs externas com autenticação via **Google Identity Services (OAuth JWT)**, gerando roteiros de viagem com dados meteorológicos, cálculo de percurso rodoviário e guia turístico & culinário com inteligência artificial.
+Versão desenvolvida a partir do projeto enviado, com backend FastAPI e frontend React/Vite. Leia este arquivo antes de executar.
 
----
+## Requisitos
 
-## Arquitetura atual
+- Python 3.11 ou superior.
+- Node.js 22.12 ou superior (Node 24 recomendado).
+- Internet para instalar dependências e consultar mapas e APIs.
 
-```text
-├── backend/       API FastAPI, serviços, schemas Pydantic e testes pytest
-├── frontend/      SPA React/Vite, Leaflet, SSE e testes Vitest
-├── static/data/   Persistência JSON dos roteiros
-├── app.py         Flask legado, mantido para referência
-└── CHECKLIST_ATIVIDADE.md
-```
+## 1. Backend — primeiro terminal
 
-A versão atual usa FastAPI na porta `8001` e React/Vite na porta `5173`.
-
-## Configuração e execução
+Na pasta extraída:
 
 ```bash
+cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env
-uvicorn backend.app.main:app --reload --port 8001
+python -m pip install -r requirements.txt
+cp .env.example .env
+python -m uvicorn app.main:app --reload --port 8001
 ```
 
-Em outro terminal:
+Antes de iniciar, edite `backend/.env`:
+
+```dotenv
+GEMINI_API_KEY=sua_chave
+GEMINI_MODEL=gemini-flash-latest
+GOOGLE_CLIENT_ID=seu_cliente.apps.googleusercontent.com
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+```
+
+A chave Gemini fica SOMENTE no backend. Obtenha-a em https://aistudio.google.com/apikey. O nome do modelo é configurável conforme sua conta e disponibilidade.
+
+API: http://localhost:8001/docs. Saúde: `/healthz`, prontidão: `/readyz`, métricas: `/metrics`.
+
+## 2. Frontend — segundo terminal
 
 ```bash
 cd frontend
-npm install
+npm ci
+cp .env.example .env
 npm run dev
 ```
 
-Preencha `backend/.env` quando necessário:
+Abra http://localhost:5173. O backend deve continuar aberto no outro terminal.
 
-```env
-GEMINI_API_KEY=
-GOOGLE_CLIENT_ID=
-CORS_ORIGINS=http://localhost:5173
+Para Google, coloque em `frontend/.env` o mesmo Client ID do backend:
+
+```dotenv
+VITE_API_URL=http://localhost:8001
+VITE_GOOGLE_CLIENT_ID=seu_cliente.apps.googleusercontent.com
 ```
 
-Acesse `http://localhost:5173`, `http://localhost:8001/docs` e
-`http://localhost:8001/metrics`.
+Crie um cliente OAuth do tipo aplicativo Web no Google Cloud e autorize as origens `http://localhost:5173` e `http://127.0.0.1:5173`. Sem Client ID, use visitante. Sem chave Gemini, o guia informa indisponibilidade; não simula uma resposta de IA.
 
-## Endpoints principais
+Reinicie os servidores após editar `.env`.
 
-| Endpoint | Função |
-| --- | --- |
-| `POST /api/v1/auth/demo` | Sessão visitante por 2 horas |
-| `POST /api/v1/roteiros/planejar` | Planejamento com clima e rota |
-| `POST /api/v1/roteiros/stream-guia` | Guia turístico por SSE |
-| `POST /api/v1/roteiros/mapa-rota` | Geometria, alternativas, paradas e relevo |
-| `POST /api/v1/roteiros/custos` | Custos de combustível/energia e rateio |
-| `GET /api/v1/roteiros` | Histórico por `X-User-Id` |
-| `DELETE /api/v1/roteiros/{id}` | Excluir roteiro |
-| `POST /api/v1/roteiros/exportar/gpx` | Exportar GPX 1.1 |
-| `POST /api/v1/roteiros/compartilhar` | Link para WhatsApp |
-| `GET /api/v1/telemetria/resumo` | Resumo operacional |
+## Funcionalidades
 
-## Testes
+- Formulário de origem/destino, UF, duração, perfil e parâmetros de combustão/EV.
+- Geocodificação por município e estado; consultas concorrentes de clima/rota.
+- Leaflet com geometria OSRM e rotas alternativas, quando fornecidas.
+- Perfil de elevação Open-Elevation e ajuste didático de consumo.
+- Custos, pedágios informados manualmente e rateio por passageiros.
+- Projeção de paradas com reserva de 18%, calculadas pela distância acumulada da geometria.
+- Gemini com SDK oficial e streaming SSE; cancelamento do streaming ao trocar de viagem.
+- Catálogo local de destinos/atrativos/gastronomia e marcação de visitas.
+- Sugestões pelo GPS para quatro destinos do catálogo acima de 400 km em linha reta.
+- Histórico isolado por usuário, exclusão e persistência JSON atômica com file lock.
+- Visitante de duas horas e Google; alternância sem perder a conta Google salva.
+- Exportação GPX 1.1, link WhatsApp e Google Maps.
+- Tema persistido, status de rede, ErrorBoundary e métricas de latência.
+
+## Limites que precisam ser conhecidos na apresentação
+
+- Os serviços externos são reais, mas esta entrega foi validada com respostas simuladas nos testes. Não foram usadas chaves pessoais para testar Gemini ou login Google ao vivo.
+- Não há garantia de resposta abaixo de 1.000 ms. A latência deve ser medida na rede da apresentação. O tempo de API e o tempo total da operação são mostrados separadamente.
+- O autocomplete usa um catálogo local de oito destinos, não todos os municípios brasileiros. Outros municípios podem ser digitados e geocodificados.
+- As paradas não são postos/eletropostos confirmados; são pontos projetados de autonomia. Confirme a infraestrutura real antes de viajar.
+- Pedágios são fornecidos manualmente. Não existe integração com tarifas rodoviárias atualizadas.
+- O perfil de relevo utiliza até vinte amostras; o ajuste de consumo é uma regra didática, não um modelo físico validado.
+- O compartilhamento prepara um link para o usuário enviar no WhatsApp; não envia mensagens automaticamente.
+- A exportação GPX contém o traçado em latitude/longitude, sem elevações ou catálogo de waypoints.
+- Sessões e circuitos são mantidos em memória; execute com um único worker. Reiniciar o backend exige entrar novamente; viagens Google permanecem no arquivo JSON e voltam após novo login. Visitantes recebem uma identidade nova a cada login.
+- `X-User-Id` segue o contrato didático da atividade. Para produção, substituir por token de sessão secreto e aplicar controles adicionais.
+- O estado `closed` dos circuitos significa que chamadas são permitidas; não constitui uma verificação ativa da disponibilidade.
+
+## Testes e qualidade
+
+Na raiz (mesmo nível das pastas backend e frontend), após instalar dependências Python:
 
 ```bash
-# Backend
-.venv/bin/pytest backend/tests -q
+python -m pytest -v
+```
 
-# Frontend
-cd frontend
+No frontend:
+
+```bash
 npm test
+npm run lint
 npm run build
 ```
 
-## Organização da equipe
+Inclui teste de fluxo da interface com APIs simuladas. Validação desta entrega: 13 testes de backend e 8 de frontend aprovados; build e lint aprovados. Testes de backend usam `httpx.MockTransport`, sem depender da disponibilidade da internet.
 
-- **Frontend:** `frontend/src`, formulário, Leaflet, SSE, geolocalização e UX.
-- **Backend core:** `backend/app/main.py`, autenticação e orquestração assíncrona.
-- **Dados e altimetria:** schemas, custos, autonomia, Open-Elevation e persistência.
-- **QA e streaming:** SSE, GPX, telemetria, testes e documentação.
+## Divisão para apresentação
 
-Consulte [CHECKLIST_ATIVIDADE.md](CHECKLIST_ATIVIDADE.md) antes de assumir uma tarefa.
-Marque uma etapa somente após validá-la com teste ou execução local.
+1. Frontend: `App.jsx`, `RoteiroForm.jsx`, `MapaRota.jsx`, `services/api.js`, `geolocation.js`, CSS, login e sessão.
+2. Backend: `main.py`, `/planejar`, `core/dependencies.py`, concorrência e circuit breakers.
+3. Dados: schemas, `advanced.py`, `altimetria.py`, custos, autonomia e persistência.
+4. Streaming/QA: `gemini.py`, SSE, `gpx.py`, métricas e suítes de testes.
 
-## Commits e colaboração
-
-```bash
-git pull --rebase origin main
-git diff --check
-git add caminho/dos/arquivos
-git commit -m "feat: descreve a alteração em português"
-git push origin main
-```
-
-Mensagens devem ser objetivas e em português:
-
-- `feat: adiciona exportação de roteiros em GPX`
-- `fix: corrige validação de UF no planejamento`
-- `test: cobre cálculo de distância Haversine`
-- `docs: atualiza instruções de execução`
-
-Não versionar `.venv/`, `node_modules/`, `frontend/dist/`, arquivos `.env` ou chaves de API.
+Cada aluno deve estudar e conseguir defender o código que apresenta. Este ZIP não inclui `.venv`, `node_modules`, chaves ou dados pessoais.

@@ -15,6 +15,10 @@ def calcular_custos(data: Any) -> dict[str, float | int | str]:
         autonomia = data.capacidade_tanque * data.consumo_medio
         custo_energia = energia * data.preco_combustivel
         propulsao = "combustão"
+    fator = 1 + data.penalizacao_percentual / 100
+    energia *= fator
+    custo_energia *= fator
+    autonomia /= fator
     total = custo_energia + data.pedagios
     return {
         "propulsao": propulsao,
@@ -50,6 +54,8 @@ async def obter_rota_com_geometria(
     client: httpx.AsyncClient,
     payload: Any,
 ) -> dict[str, Any]:
+    from ..core.circuit_breaker import providers_breakers
+    circuito = providers_breakers["routing"]
     fallback = {
         "distancia_km": 0,
         "duracao_minutos": 0,
@@ -58,6 +64,7 @@ async def obter_rota_com_geometria(
         "paradas": sugerir_paradas(0, payload.autonomia_km, payload.margem_seguranca),
         "altimetria": {},
     }
+    if circuito.state == "open": return fallback
     url = (
         "https://router.project-osrm.org/route/v1/driving/"
         f"{payload.origem_longitude},{payload.origem_latitude};"
@@ -72,6 +79,7 @@ async def obter_rota_com_geometria(
         routes = response.json().get("routes", [])
         if not routes:
             return fallback
+        circuito.record_success()
         principal = routes[0]
         distancia = principal["distance"] / 1000
         return {
@@ -82,6 +90,7 @@ async def obter_rota_com_geometria(
                 {
                     "distancia_km": round(route["distance"] / 1000, 2),
                     "duracao_minutos": round(route["duration"] / 60),
+                    "geometria": route.get("geometry", {}).get("coordinates", []),
                 }
                 for route in routes[1:]
             ],
@@ -89,4 +98,5 @@ async def obter_rota_com_geometria(
             "altimetria": {},
         }
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        circuito.record_failure()
         return fallback

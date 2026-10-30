@@ -1,8 +1,8 @@
 .venv/
+node_modules/
+dist/
 __pycache__/
-*.py[cod]
-frontend/node_modules/
-frontend/dist/
-backend/.env
-frontend/.env
 .pytest_cache/
+.env
+static/data/*.json
+static/data/*.lock

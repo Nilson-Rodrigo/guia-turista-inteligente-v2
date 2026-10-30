@@ -1,81 +1,60 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001";
-
-async function request(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
+const BASE = import.meta.env.VITE_API_URL || "http://localhost:8001";
+export async function api(
+  path,
+  { method = "GET", body, user, raw = false } = {},
+) {
+  const response = await fetch(BASE + path, {
+    method,
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(user ? { "X-User-Id": user.id } : {}),
     },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) {
-    const detail = await response.json().catch(() => ({}));
-    throw new Error(detail.detail || `Falha HTTP ${response.status}`);
+    const e = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof e.detail === "string"
+        ? e.detail
+        : JSON.stringify(e.detail || `HTTP ${response.status}`),
+    );
   }
-  return response.status === 204 ? null : response.json();
+  if (raw) return response;
+  if (response.status === 204) return null;
+  return response.json();
 }
-
-export function loginDemo() {
-  return request("/api/v1/auth/demo", { method: "POST" });
-}
-
-export function planejar(payload, userId) {
-  return request("/api/v1/roteiros/planejar", {
+export async function streamGuia(body, user, onChunk, signal) {
+  const r = await fetch(BASE + "/api/v1/roteiros/stream-guia", {
     method: "POST",
-    headers: { "X-User-Id": userId },
-    body: JSON.stringify(payload),
+    signal,
+    headers: { "Content-Type": "application/json", "X-User-Id": user.id },
+    body: JSON.stringify(body),
   });
-}
-
-export function listarRoteiros(userId) {
-  return request("/api/v1/roteiros", { headers: { "X-User-Id": userId } });
-}
-
-export function calcularCustos(payload) {
-  return request("/api/v1/roteiros/custos", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function obterMapaRota(payload) {
-  return request("/api/v1/roteiros/mapa-rota", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function deletarRoteiro(id, userId) {
-  return request(`/api/v1/roteiros/${id}`, {
-    method: "DELETE",
-    headers: { "X-User-Id": userId },
-  });
-}
-
-export async function streamGuia(destino, userId, onChunk) {
-  const response = await fetch(`${API_URL}/api/v1/roteiros/stream-guia`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Id": userId,
-    },
-    body: JSON.stringify({ destino, dias_estadia: 2, estilo_viagem: "Cultural" }),
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(`Falha no streaming HTTP ${response.status}`);
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  if (!r.ok || !r.body) throw new Error("Falha no guia: " + r.status);
+  const reader = r.body.getReader(),
+    decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const eventos = buffer.split("\n\n");
-    buffer = eventos.pop() || "";
-    for (const evento of eventos) {
-      const linha = evento.split("\n").find((item) => item.startsWith("data: "));
-      if (linha && linha.slice(6) !== "[DONE]") onChunk(linha.slice(6));
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        const data = part
+          .split("\n")
+          .filter((l) => l.startsWith("data: "))
+          .map((l) => l.slice(6))
+          .join("\n");
+        if (data) {
+          const e = JSON.parse(data);
+          onChunk(e.chunk);
+        }
+      }
+      if (done) break;
     }
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
   }
 }

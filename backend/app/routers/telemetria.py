@@ -15,7 +15,6 @@ async def resumo_telemetria() -> dict[str, int | str]:
     return {
         "roteiros_gerados": total,
         "conexoes_ativas": len(active_requests),
-        "arquivo_persistencia": str(DATA_FILE),
         "status": "operacional",
         "circuitos": {name: breaker.state for name, breaker in providers_breakers.items()},
     }
@@ -27,7 +26,7 @@ async def metrics() -> str:
     total = int(data.get("total_roteiros", 0))
     lines = [
         "# HELP guia_roteiros_gerados Total de roteiros persistidos.",
-        "# TYPE guia_roteiros_gerados counter",
+        "# TYPE guia_roteiros_gerados gauge",
         f"guia_roteiros_gerados {total}",
     ]
     for name, breaker in providers_breakers.items():

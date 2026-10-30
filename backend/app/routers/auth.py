@@ -17,6 +17,8 @@ async def login_demo() -> LoginResponse:
 @router.post("/google", response_model=LoginResponse)
 async def login_google(payload: GoogleTokenRequest, request: Request) -> LoginResponse:
     settings = get_settings()
+    if not settings.google_client_id:
+        raise HTTPException(503, "Configure GOOGLE_CLIENT_ID")
     client: httpx.AsyncClient = request.app.state.http_client
     try:
         response = await client.get(

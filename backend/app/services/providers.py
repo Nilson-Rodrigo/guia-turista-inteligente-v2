@@ -1,6 +1,9 @@
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
+import unicodedata
+from ..core.catalogo import DESTINOS
 
 
 async def buscar_coordenadas(
@@ -22,24 +25,25 @@ async def buscar_coordenadas(
         )
         response.raise_for_status()
         resultados = response.json().get("results", [])
+        estados = dict(zip("AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(), ["Acre","Alagoas","Amapá","Amazonas","Bahia","Ceará","Distrito Federal","Espírito Santo","Goiás","Maranhão","Mato Grosso","Mato Grosso do Sul","Minas Gerais","Pará","Paraíba","Paraná","Pernambuco","Piauí","Rio de Janeiro","Rio Grande do Norte","Rio Grande do Sul","Rondônia","Roraima","Santa Catarina","São Paulo","Sergipe","Tocantins"]))
+        def norm(t): return ''.join(c for c in unicodedata.normalize('NFD', t.lower()) if unicodedata.category(c)!='Mn')
         resultado = next(
             (
                 item
                 for item in resultados
-                if str(item.get("admin1", "")).upper() == uf
-                or str(item.get("admin1", "")).lower() == uf.lower()
+                if norm(str(item.get("admin1", ""))) in [norm(uf), norm(estados[uf])]
             ),
-            resultados[0] if resultados else None,
+            None,
         )
         if not resultado:
-            return fallback
+            raise HTTPException(422, "Cidade não localizada na UF informada")
         return {
             "latitude": float(resultado["latitude"]),
             "longitude": float(resultado["longitude"]),
             "nome": f"{resultado.get('name', cidade)} - {uf}",
         }
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
-        return fallback
+        raise HTTPException(503, "Geocodificação indisponível; tente novamente")
 
 
 async def obter_clima(
@@ -56,7 +60,7 @@ async def obter_clima(
             params={
                 "latitude": latitude,
                 "longitude": longitude,
-                "current": "temperature_2m,relative_humidity_2m,wind_speed_10m",
+                "current": "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m",
                 "timezone": "auto",
             },
         )
@@ -65,6 +69,7 @@ async def obter_clima(
         units = response.json().get("current_units", {})
         return {
             "temperatura": f"{current['temperature_2m']} {units.get('temperature_2m', '°C')}",
+            "sensacao": str(current.get("apparent_temperature", "N/D")) + " °C",
             "umidade": f"{current['relative_humidity_2m']} {units.get('relative_humidity_2m', '%')}",
             "vento": f"{current['wind_speed_10m']} {units.get('wind_speed_10m', 'km/h')}",
         }
@@ -96,3 +101,25 @@ async def obter_percurso(
         return {"distancia": f"{distancia_km:.1f} km", "tempo": tempo}
     except (httpx.HTTPError, IndexError, KeyError, TypeError, ValueError):
         return fallback
+
+# Circuitos são consultados antes da chamada e alimentados pelos resultados.
+from ..core.circuit_breaker import providers_breakers
+
+def proteger(nome, func):
+    async def chamada(*args, **kwargs):
+        circuito = providers_breakers[nome]
+        if circuito.state == "open":
+            raise HTTPException(503, f"Serviço {nome} temporariamente indisponível")
+        try:
+            resultado = await func(*args, **kwargs)
+            falhou = resultado.get("temperatura") == "N/D" or resultado.get("tempo") == "N/D"
+            if falhou: circuito.record_failure()
+            else: circuito.record_success()
+            return resultado
+        except Exception:
+            circuito.record_failure()
+            raise
+    return chamada
+buscar_coordenadas = proteger("geocoding", buscar_coordenadas)
+obter_clima = proteger("weather", obter_clima)
+obter_percurso = proteger("routing", obter_percurso)

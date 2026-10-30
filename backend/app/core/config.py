@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     """Configurações do backend carregadas do ambiente ou de .env."""
 
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-flash-latest"
     google_client_id: str = ""
     cors_origins: str = "http://localhost:5173"
     app_name: str = "Guia do Turista Inteligente API"

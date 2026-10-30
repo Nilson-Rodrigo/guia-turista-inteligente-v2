@@ -24,6 +24,7 @@ class CustosRequest(BaseModel):
     eficiencia_kwh: Positive = 6
     capacidade_bateria: Positive = 60
     preco_kwh: Positive = 1
+    penalizacao_percentual: float = Field(default=0, ge=0, le=100)
     pedagios: Annotated[float, Field(ge=0)] = 0
     passageiros: Annotated[int, Field(ge=1, le=8)] = 1
 
@@ -32,6 +33,7 @@ class CustosResponse(BaseModel):
     propulsao: str
     energia_consumida: float
     custo_energia: float
+    penalizacao_percentual: float = Field(default=0, ge=0, le=100)
     pedagios: float
     custo_total: float
     custo_por_passageiro: float

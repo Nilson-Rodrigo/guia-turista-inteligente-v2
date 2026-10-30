@@ -1,10 +1,1 @@
-# Backend FastAPI
-
-Executar a partir da raiz do projeto:
-
-```bash
-pip install -r backend/requirements.txt
-uvicorn backend.app.main:app --reload --port 8001
-```
-
-Documentação: `http://localhost:8001/docs`
+Consulte o README.md na raiz do projeto para instalação, variáveis de ambiente, testes e limites conhecidos.

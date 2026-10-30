@@ -1,114 +1,629 @@
-import { useEffect, useState } from "react";
-import { ArrowRight, Compass, MapPin, Moon, Plus, Sun, Trash2, UserRound } from "lucide-react";
-import { calcularCustos, deletarRoteiro, listarRoteiros, loginDemo, obterMapaRota, planejar, streamGuia } from "./services/api";
-import MapaRota from "./components/MapaRota.jsx";
-import Toast from "./components/Toast.jsx";
+import { useEffect, useRef, useState } from "react";
+import { api, streamGuia } from "./services/api";
+import { getCurrentPosition, haversineKm } from "./services/geolocation";
+import RoteiroForm, { initialForm } from "./components/RoteiroForm";
+import MapaRota from "./components/MapaRota";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
-import { useSessionTimer } from "./hooks/useSessionTimer";
-
-const initialForm = { origem_cidade: "", origem_uf: "", destino_cidade: "", destino_uf: "", propulsao: "combustao", dias_estadia: 2, estilo_viagem: "Cultural", passageiros: 1, consumo_medio: 12, preco_combustivel: 6, eficiencia_kwh: 6, preco_kwh: 1 };
-const ufs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
-
+const ROOT = "/api/v1/roteiros";
+const money = (n) =>
+  Number(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [form, setForm] = useState(initialForm);
-  const [roteiros, setRoteiros] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [dark, setDark] = useState(false);
-  const [guia, setGuia] = useState("");
-  const [guiaLoading, setGuiaLoading] = useState(false);
-  const [custos, setCustos] = useState(null);
-  const [mapa, setMapa] = useState(null);
-  const online = useNetworkStatus();
-  const sessionTime = useSessionTimer(user);
-  const [toast, setToast] = useState("");
-
-  useEffect(() => {
-    const saved = localStorage.getItem("guia_user");
-    if (saved) setUser(JSON.parse(saved));
-  }, []);
-
-  useEffect(() => {
-    if (user) listarRoteiros(user.id).then(setRoteiros).catch(() => setRoteiros([]));
-  }, [user]);
-
-  async function enterDemo() {
-    setError("");
+  const [user, setUser] = useState(null),
+    [form, setForm] = useState(initialForm),
+    [history, setHistory] = useState([]),
+    [selected, setSelected] = useState(null),
+    [mapa, setMapa] = useState(null),
+    [cost, setCost] = useState(null),
+    [guia, setGuia] = useState(""),
+    [loading, setLoading] = useState(false),
+    [guideLoading, setGuideLoading] = useState(false),
+    [error, setError] = useState(""),
+    [destinos, setDestinos] = useState([]),
+    [suggestions, setSuggestions] = useState([]),
+    [tele, setTele] = useState(null),
+    [dark, setDark] = useState(localStorage.getItem("theme") === "dark"),
+    [saved, setSaved] = useState(null),
+    [remaining, setRemaining] = useState(0);
+  const googleButton = useRef(null),
+    streamController = useRef(null),
+    online = useNetworkStatus();
+  const [routes, setRoutes] = useState([]),
+    [routeIndex, setRouteIndex] = useState(0),
+    [vehicle, setVehicle] = useState(initialForm);
+  function clear() {
+    streamController.current?.abort();
+    setHistory([]);
+    setSelected(null);
+    setMapa(null);
+    setCost(null);
+    setGuia("");
+  }
+  function activate(u) {
+    clear();
+    setUser(u);
+    localStorage.setItem("guia_user", JSON.stringify(u));
+  }
+  async function loadHistory(u = user) {
+    if (u) setHistory(await api(ROOT, { user: u }));
+  }
+  async function visitor() {
     try {
-      const response = await loginDemo();
-      setUser(response.usuario);
-      localStorage.setItem("guia_user", JSON.stringify(response.usuario));
-    } catch (requestError) {
-      setError(requestError.message);
+      const r = await api("/api/v1/auth/demo", { method: "POST" });
+      activate({ ...r.usuario, expiresAt: Date.now() + r.expires_in * 1000 });
+    } catch (e) {
+      setError(e.message);
     }
   }
-
-  async function submit(event) {
-    event.preventDefault();
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const stored = JSON.parse(localStorage.getItem("guia_user") || "null");
+      setSaved(JSON.parse(localStorage.getItem("guia_google") || "null"));
+      if (stored)
+        api("/api/v1/auth/me", { user: stored })
+          .then(() => {
+            if (!cancelled) setUser(stored);
+          })
+          .catch(() => localStorage.removeItem("guia_user"));
+    } catch {
+      localStorage.removeItem("guia_user");
+    }
+    return () => {
+      cancelled = true;
+      streamController.current?.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (!user) return;
+    loadHistory(user).catch((e) => setError(e.message));
+    api(ROOT + "/destinos", { user })
+      .then(setDestinos)
+      .catch((e) => setError(e.message));
+  }, [user]);
+  useEffect(() => {
+    if (!user?.visitante) return;
+    const update = () => {
+      const delta = (user.expiresAt || 0) - Date.now();
+      setRemaining(Math.max(0, delta));
+      if (delta <= 0) {
+        clear();
+        setUser(null);
+        localStorage.removeItem("guia_user");
+        setError("Sessão visitante expirada. Entre novamente.");
+      }
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [user]);
+  useEffect(() => {
+    localStorage.setItem("theme", dark ? "dark" : "light");
+  }, [dark]);
+  useEffect(() => {
+    const id = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!id) return;
+    let disposed = false;
+    const setup = () => {
+      if (disposed || !googleButton.current) return;
+      window.google.accounts.id.initialize({
+        client_id: id,
+        callback: async ({ credential }) => {
+          try {
+            const r = await api("/api/v1/auth/google", {
+              method: "POST",
+              body: { credential },
+            });
+            localStorage.setItem("guia_google", JSON.stringify(r.usuario));
+            setSaved(r.usuario);
+            activate(r.usuario);
+          } catch (e) {
+            setError(e.message);
+          }
+        },
+      });
+      window.google.accounts.id.renderButton(googleButton.current, {
+        theme: "outline",
+        size: "large",
+      });
+    };
+    if (window.google?.accounts) setup();
+    else {
+      let script = document.getElementById("google-identity");
+      if (!script) {
+        script = document.createElement("script");
+        script.id = "google-identity";
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        document.head.appendChild(script);
+      }
+      script.addEventListener("load", setup);
+      return () => {
+        disposed = true;
+        script.removeEventListener("load", setup);
+      };
+    }
+    return () => {
+      disposed = true;
+    };
+  }, [user]);
+  async function gps() {
+    try {
+      const position = await getCurrentPosition();
+      const items = destinos
+        .map((d) => ({ ...d, distance: haversineKm(position, d) }))
+        .filter((d) => d.distance > 400)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 4);
+      setSuggestions(items);
+      if (!items.length)
+        setError("Nenhum destino do catálogo atende ao filtro.");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  async function applyRoute(route, v) {
+    if (route.altimetria?.pendente) {
+      route = {
+        ...route,
+        altimetria: await api(ROOT + "/altimetria", {
+          method: "POST",
+          user,
+          body: { geometria: route.geometria },
+        }),
+      };
+    }
+    setMapa(route);
+    if (!route.distancia_km) {
+      setCost(null);
+      return;
+    }
+    const c = await api(ROOT + "/custos", {
+      method: "POST",
+      user,
+      body: {
+        ...v,
+        distancia_km: route.distancia_km,
+        penalizacao_percentual:
+          route.altimetria?.penalizacao_consumo_percentual || 0,
+      },
+    });
+    setCost(c);
+    const interval = c.autonomia_por_carga * 0.82,
+      paradas = [];
+    for (let km = interval; km < route.distancia_km; km += interval)
+      paradas.push({ progresso_km: Math.round(km) });
+    setMapa({ ...route, paradas });
+  }
+  async function showTrip(trip, v = vehicle) {
+    streamController.current?.abort();
+    setGuia("");
+    setSelected(trip);
+    setCost(null);
+    setMapa(null);
+    const data = await api(ROOT + "/mapa-rota", {
+      method: "POST",
+      user,
+      body: {
+        origem_latitude: trip.origem_coordenadas[0],
+        origem_longitude: trip.origem_coordenadas[1],
+        destino_latitude: trip.destino_coordenadas[0],
+        destino_longitude: trip.destino_coordenadas[1],
+        autonomia_km:
+          v.propulsao === "eletrico"
+            ? v.capacidade_bateria * v.eficiencia_kwh
+            : v.capacidade_tanque * v.consumo_medio,
+      },
+    });
+    const all = [
+      data,
+      ...data.rotas_alternativas.map((r) => ({
+        ...r,
+        altimetria: { disponivel: false, pendente: true },
+        paradas: [],
+      })),
+    ];
+    setRoutes(all);
+    setRouteIndex(0);
+    await applyRoute(data, v);
+  }
+  async function submit(e) {
+    e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError("");
+    const start = performance.now();
     try {
-      const roteiro = await planejar(form, user.id);
-      setRoteiros((current) => [roteiro, ...current]);
-      setToast("Roteiro criado com sucesso.");
-      const distancia = Number.parseFloat(roteiro.percurso.distancia);
-      if (Number.isFinite(distancia)) {
-        const custo = await calcularCustos({
-          distancia_km: distancia,
-          propulsao: form.propulsao,
-          passageiros: Number(form.passageiros),
-          consumo_medio: Number(form.consumo_medio),
-          preco_combustivel: Number(form.preco_combustivel),
-          eficiencia_kwh: Number(form.eficiencia_kwh),
-          preco_kwh: Number(form.preco_kwh),
-        });
-        setCustos(custo);
-      }
-      const mapaRota = await obterMapaRota({
-        origem_latitude: roteiro.origem_coordenadas[0],
-        origem_longitude: roteiro.origem_coordenadas[1],
-        destino_latitude: roteiro.destino_coordenadas[0],
-        destino_longitude: roteiro.destino_coordenadas[1],
-        autonomia_km: form.propulsao === "eletrico" ? 360 : 600,
+      setVehicle({ ...form });
+      const response = await api(ROOT + "/planejar", {
+        method: "POST",
+        user,
+        body: form,
+        raw: true,
       });
-      setMapa(mapaRota);
-      setForm(initialForm);
-    } catch (requestError) {
-      setError(requestError.message);
+      const trip = await response.json();
+      await showTrip(trip, form);
+      await loadHistory();
+      const stats = await api("/api/v1/telemetria/resumo", { user });
+      setTele({
+        ...stats,
+        latency: response.headers.get("X-Process-Time"),
+        requestId: response.headers.get("X-Request-ID"),
+        total: Math.round(performance.now() - start),
+      });
+    } catch (e) {
+      setError(e.message);
     } finally {
       setLoading(false);
-      window.setTimeout(() => setToast(""), 3000);
     }
   }
-
-  async function remove(id) {
-    await deletarRoteiro(id, user.id);
-    setRoteiros((current) => current.filter((roteiro) => roteiro.id !== id));
-  }
-
-  async function generateGuide(destino) {
+  async function guide() {
+    streamController.current?.abort();
+    const controller = new AbortController();
+    streamController.current = controller;
     setGuia("");
-    setGuiaLoading(true);
-    setError("");
+    setGuideLoading(true);
     try {
-      await streamGuia(destino, user.id, (chunk) => setGuia((current) => `${current}${chunk} `));
-    } catch (requestError) {
-      setError(requestError.message);
+      await streamGuia(
+        {
+          destino: selected.destino,
+          dias_estadia: selected.dias_estadia,
+          estilo_viagem: selected.estilo_viagem,
+          clima_info: selected.clima,
+          atrativos: selected.atrativos,
+          gastronomia: selected.gastronomia,
+        },
+        user,
+        (c) => setGuia((t) => t + c),
+        controller.signal,
+      );
+    } catch (e) {
+      if (e.name !== "AbortError") setError(e.message);
     } finally {
-      setGuiaLoading(false);
+      if (streamController.current === controller) setGuideLoading(false);
     }
   }
-
-  if (!user) {
-    return <main className="login-page"><div className="login-panel"><span className="eyebrow">BRASIL · API ASSÍNCRONA</span><h1>Planeje uma viagem que começa antes da estrada.</h1><p>Rotas, clima e contexto local reunidos em uma experiência simples.</p><button className="primary-button" onClick={enterDemo}><UserRound size={18} /> Entrar como visitante</button>{error && <p className="error">{error}</p>}</div></main>;
+  async function visited(id) {
+    try {
+      const visits = selected.visitas.includes(id)
+        ? selected.visitas.filter((v) => v !== id)
+        : [...selected.visitas, id];
+      const trip = await api(ROOT + "/" + selected.id + "/visitas", {
+        method: "PATCH",
+        user,
+        body: { visitas: visits },
+      });
+      setSelected(trip);
+      await loadHistory();
+    } catch (e) {
+      setError(e.message);
+    }
   }
-
-  return <main className={dark ? "app dark" : "app"}>
-    <Toast message={toast || (!online ? "Você está offline. Algumas consultas podem falhar." : "")} type={toast ? "success" : "info"} />
-    <header className="topbar"><div className="brand"><Compass size={23} /><span>Guia do Turista</span></div><div className="top-actions"><button className="icon-button" title="Alternar tema" onClick={() => setDark(!dark)}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button><span className="user-pill"><UserRound size={15} /> {user.nome}</span>{sessionTime && <span className="session-pill" title="Tempo restante da sessão visitante">{sessionTime}</span>}</div></header>
-    <section className="hero"><div><span className="eyebrow">ROTEIRO {String(roteiros.length + 1).padStart(2, "0")}</span><h1>O Brasil fica maior quando você sabe onde parar.</h1><p>Escolha uma origem e um destino. Nós cuidamos da rota, do clima e do primeiro mapa mental da viagem.</p></div><div className="hero-mark"><MapPin size={42} /><span>explore<br />mais perto</span></div></section>
-    <section className="workspace"><form className="planner" onSubmit={submit}><div className="section-heading"><div><span className="eyebrow">PLANEJADOR</span><h2>Trace o próximo capítulo</h2></div><span className="step-badge">01 / 01</span></div><div className="route-fields"><label>Origem<input required value={form.origem_cidade} onChange={(e) => setForm({ ...form, origem_cidade: e.target.value })} placeholder="Recife" /></label><label>UF<select required value={form.origem_uf} onChange={(e) => setForm({ ...form, origem_uf: e.target.value })}><option value="">--</option>{ufs.map((uf) => <option key={uf}>{uf}</option>)}</select></label><ArrowRight className="route-arrow" size={20} /><label>Destino<input required value={form.destino_cidade} onChange={(e) => setForm({ ...form, destino_cidade: e.target.value })} placeholder="Salvador" /></label><label>UF<select required value={form.destino_uf} onChange={(e) => setForm({ ...form, destino_uf: e.target.value })}><option value="">--</option>{ufs.map((uf) => <option key={uf}>{uf}</option>)}</select></label></div><button className="primary-button" disabled={loading}>{loading ? "Consultando provedores..." : <><Plus size={18} /> Gerar roteiro</>}</button>{error && <p className="error">{error}</p>}</form><aside className="aside-note"><span className="eyebrow">SINAL ABERTO</span><h3>Uma rota boa deixa espaço para o inesperado.</h3><p>Os dados vêm de provedores geográficos e meteorológicos consultados em paralelo.</p></aside></section>
-    <section className="history"><div className="section-heading"><div><span className="eyebrow">HISTÓRICO</span><h2>Suas rotas salvas</h2></div><span className="count">{roteiros.length} roteiros</span></div>{mapa && <MapaRota rota={mapa} />}{roteiros.length === 0 ? <div className="empty"><Compass size={28} /><p>Seu mapa ainda está em branco.</p></div> : <div className="route-list">{roteiros.map((roteiro) => <article className="route-card" key={roteiro.id}><div className="route-title"><strong>{roteiro.origem}</strong><ArrowRight size={17} /><strong>{roteiro.destino}</strong></div><div className="metrics"><span>🌡 {roteiro.clima.temperatura}</span><span>💧 {roteiro.clima.umidade}</span><span>🚗 {roteiro.percurso.distancia}</span><span>◷ {roteiro.percurso.tempo}</span></div><div className="card-actions"><button className="guide-button" onClick={() => generateGuide(roteiro.destino)}>{guiaLoading ? "Gerando guia..." : "Abrir guia em streaming"}</button><button className="delete-button" title="Excluir roteiro" onClick={() => remove(roteiro.id)}><Trash2 size={16} /></button></div></article>)}</div>}{guia && <article className="guide-panel"><span className="eyebrow">GUIA DO VIAJANTE · SSE</span><p>{guia}</p></article>}</section>
-  </main>;
+  async function gpx() {
+    try {
+      const r = await api(ROOT + "/exportar/gpx", {
+        method: "POST",
+        user,
+        body: { ...selected, geometria: mapa.geometria },
+        raw: true,
+      });
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "roteiro.gpx";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  async function share() {
+    try {
+      const r = await api(ROOT + "/compartilhar", {
+        method: "POST",
+        user,
+        body: { canal: "whatsapp", roteiro: selected },
+      });
+      window.open(r.link, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  async function restore() {
+    try {
+      await api("/api/v1/auth/me", { user: saved });
+      activate(saved);
+    } catch {
+      setError("Entre novamente com o Google para restaurar a conta.");
+    }
+  }
+  async function logout() {
+    try {
+      await api("/api/v1/auth/logout", { method: "POST", user });
+    } catch {}
+    clear();
+    setUser(null);
+    setSaved(null);
+    localStorage.removeItem("guia_user");
+    localStorage.removeItem("guia_google");
+  }
+  return (
+    <main className={dark ? "app dark" : "app"}>
+      <header className="topbar">
+        <h1>Guia do Turista</h1>
+        <button onClick={() => setDark(!dark)} aria-label="Alternar tema">
+          {dark ? "Tema claro" : "Tema escuro"}
+        </button>
+        {user && (
+          <>
+            <span>
+              {user.nome}{" "}
+              {user.visitante && `· ${Math.ceil(remaining / 60000)} min`}
+            </span>
+            {!user.visitante && (
+              <button onClick={visitor}>Usar como visitante</button>
+            )}
+            {user.visitante && saved && (
+              <button onClick={restore}>Voltar para {saved.nome}</button>
+            )}
+            <button onClick={logout}>Sair</button>
+          </>
+        )}
+        <div ref={googleButton} />
+      </header>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+          <button onClick={() => setError("")}>Fechar</button>
+        </p>
+      )}
+      {!online && <p role="status">Você está offline.</p>}
+      {!user ? (
+        <section className="hero">
+          <h2>Explore o Brasil com um roteiro seu.</h2>
+          <p>Mapas, clima, custos e um guia para a viagem.</p>
+          <button className="primary-button" onClick={visitor}>
+            Entrar como visitante
+          </button>
+          {!import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+            <p>Login Google disponível após configurar o Client ID.</p>
+          )}
+        </section>
+      ) : (
+        <>
+          <section className="hero">
+            <h2>Seu próximo destino começa aqui.</h2>
+            <p>Planeje a rota e confirme as condições antes de viajar.</p>
+          </section>
+          <RoteiroForm
+            form={form}
+            setForm={setForm}
+            loading={loading}
+            onSubmit={submit}
+            onGPS={gps}
+            sugestoes={destinos}
+          />
+          {suggestions.length > 0 && (
+            <section className="panel">
+              <h2>Destinos sugeridos</h2>
+              {suggestions.map((d) => (
+                <button
+                  key={d.cidade}
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      destino_cidade: d.cidade,
+                      destino_uf: d.uf,
+                    })
+                  }
+                >
+                  {d.cidade} / {d.uf} · {Math.round(d.distance)} km em linha
+                  reta
+                </button>
+              ))}
+            </section>
+          )}
+          {tele && (
+            <section className="panel" aria-label="Telemetria">
+              <h2>Telemetria</h2>
+              <p>
+                API: {tele.latency} · Total da operação: {tele.total} ms ·
+                Viagens salvas: {tele.roteiros_gerados} · Requisições ativas:{" "}
+                {tele.conexoes_ativas}
+              </p>
+              <p>ID: {tele.requestId}</p>
+              <p>
+                {Object.entries(tele.circuitos || {})
+                  .map(([n, s]) => `${n}: ${s}`)
+                  .join(" · ")}
+                . Circuito fechado não confirma disponibilidade em tempo real.
+              </p>
+            </section>
+          )}
+          {selected && (
+            <section className="panel">
+              <h2>
+                {selected.origem} → {selected.destino}
+              </h2>
+              <p>
+                🌡 {selected.clima.temperatura} · Sensação{" "}
+                {selected.clima.sensacao || "N/D"} · Vento{" "}
+                {selected.clima.vento}
+              </p>
+              {routes.length > 1 && (
+                <label>
+                  Rota
+                  <select
+                    value={routeIndex}
+                    onChange={async (e) => {
+                      const index = Number(e.target.value);
+                      setRouteIndex(index);
+                      try {
+                        await applyRoute(routes[index], vehicle);
+                      } catch (err) {
+                        setError(err.message);
+                      }
+                    }}
+                  >
+                    {routes.map((r, i) => (
+                      <option key={i} value={i}>
+                        Sugestão {i + 1}: {r.distancia_km} km ·{" "}
+                        {r.duracao_minutos} min
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <MapaRota rota={mapa} />
+              {cost && (
+                <div className="metrics">
+                  <span>Total {money(cost.custo_total)}</span>
+                  <span>Por pessoa {money(cost.custo_por_passageiro)}</span>
+                  <span>Autonomia {cost.autonomia_por_carga} km</span>
+                  <span>Distância {mapa.distancia_km} km</span>
+                </div>
+              )}
+              <p>
+                Paradas são projeções com reserva de 18%; não representam postos
+                verificados.
+              </p>
+              <details>
+                <summary>Topografia e relevo</summary>
+                {mapa?.altimetria?.disponivel ? (
+                  <>
+                    <p>
+                      Subidas: {mapa.altimetria.ganho_subida_m} m · Descidas:{" "}
+                      {mapa.altimetria.perda_descida_m} m · Máxima:{" "}
+                      {mapa.altimetria.altitude_maxima_m} m · Desnível líquido:{" "}
+                      {mapa.altimetria.desnivel_liquido_m} m
+                    </p>
+                    <p>
+                      Ajuste estimado no consumo: +
+                      {mapa.altimetria.penalizacao_consumo_percentual}%
+                    </p>
+                    <svg
+                      viewBox="0 0 500 100"
+                      role="img"
+                      aria-label="Perfil de elevação"
+                    >
+                      <polyline
+                        fill="none"
+                        stroke="#df5e35"
+                        strokeWidth="3"
+                        points={(mapa.altimetria.elevacoes_m || [])
+                          .map(
+                            (v, i, a) =>
+                              `${(i * 500) / Math.max(1, a.length - 1)},${95 - ((v - Math.min(...a)) * 85) / Math.max(1, Math.max(...a) - Math.min(...a))}`,
+                          )
+                          .join(" ")}
+                      />
+                    </svg>
+                  </>
+                ) : (
+                  <p>
+                    Dados indisponíveis para esta rota; cálculo sem ajuste de
+                    relevo.
+                  </p>
+                )}
+              </details>
+              <div className="actions">
+                <button disabled={!mapa?.geometria?.length} onClick={gpx}>
+                  Baixar GPX
+                </button>
+                <button onClick={share}>Compartilhar WhatsApp</button>
+                <a
+                  target="_blank"
+                  rel="noreferrer"
+                  href={
+                    "https://www.google.com/maps/dir/?api=1&origin=" +
+                    encodeURIComponent(selected.origem) +
+                    "&destination=" +
+                    encodeURIComponent(selected.destino) +
+                    "&travelmode=driving"
+                  }
+                >
+                  Abrir no Google Maps
+                </a>
+                <button disabled={guideLoading} onClick={guide}>
+                  {guideLoading ? "Gerando…" : "Gerar guia com IA"}
+                </button>
+              </div>
+              <article
+                className="guide-panel"
+                aria-live="polite"
+                style={{ whiteSpace: "pre-wrap" }}
+              >
+                {guia}
+              </article>
+              <h3>Atrativos</h3>
+              {selected.atrativos.length ? (
+                selected.atrativos.map((a) => (
+                  <label key={a.id}>
+                    <input
+                      type="checkbox"
+                      checked={selected.visitas.includes(a.id)}
+                      onChange={() => visited(a.id)}
+                    />
+                    {a.nome}
+                  </label>
+                ))
+              ) : (
+                <p>Destino sem atrativos no catálogo local.</p>
+              )}
+              <h3>Gastronomia</h3>
+              <p>
+                {selected.gastronomia.join(" · ") ||
+                  "Destino sem gastronomia no catálogo local."}
+              </p>
+            </section>
+          )}
+          <section className="panel">
+            <h2>Viagens salvas</h2>
+            {!history.length && <p>Nenhuma viagem salva.</p>}
+            {history.map((t) => (
+              <article className="route-card" key={t.id}>
+                <span>
+                  {t.origem} → {t.destino}
+                </span>
+                <button
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      await showTrip(t);
+                    } catch (e) {
+                      setError(e.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  Abrir
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await api(ROOT + "/" + t.id, { method: "DELETE", user });
+                      if (selected?.id === t.id) {
+                        setSelected(null);
+                        streamController.current?.abort();
+                      }
+                      await loadHistory();
+                    } catch (e) {
+                      setError(e.message);
+                    }
+                  }}
+                >
+                  Excluir
+                </button>
+              </article>
+            ))}
+          </section>
+        </>
+      )}
+      <footer>
+        Projeto acadêmico · FastAPI + React · Dados e custos sujeitos a
+        confirmação.
+      </footer>
+    </main>
+  );
 }

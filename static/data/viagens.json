@@ -2,13 +2,59 @@
   "versao_schema": "1.0",
   "descricao": "Base consolidada de roteiros turísticos e telemetria por usuário",
   "atualizado_em": "2026-09-19T00:00:00.000000",
-  "total_usuarios": 0,
-  "total_roteiros": 0,
+  "total_usuarios": 1,
+  "total_roteiros": 1,
   "provedores": {
     "geocoding": "Open-Meteo Geocoding API",
     "previsao_tempo": "Open-Meteo Forecast API",
     "roteamento": "OSRM Routing Engine",
     "inteligencia_artificial": "Google Gemini (gemini-3.6-flash)"
   },
-  "usuarios": {}
+  "usuarios": {
+    "visitante-1f700ead8be94a158bfb9db1b3441769": {
+      "roteiros": [
+        {
+          "id": "c5dac0322ddd4307a51d537b49c3eb64",
+          "origem": "capitão de campos - PI",
+          "destino": "Piripiri - PI",
+          "origem_coordenadas": [
+            -4.45667,
+            -41.9425
+          ],
+          "destino_coordenadas": [
+            -4.27333,
+            -41.77694
+          ],
+          "clima": {
+            "temperatura": "29.4 °C",
+            "sensacao": "32.7 °C",
+            "umidade": "60 %",
+            "vento": "6.5 km/h"
+          },
+          "percurso": {
+            "distancia": "29.7 km",
+            "tempo": "24min"
+          },
+          "guia_status": "provider-ready",
+          "dias_estadia": 5,
+          "estilo_viagem": "Família",
+          "atrativos": [
+            {
+              "id": "0",
+              "nome": "Parque Nacional de Sete Cidades"
+            },
+            {
+              "id": "1",
+              "nome": "Açude Caldeirão"
+            }
+          ],
+          "gastronomia": [
+            "Maria Isabel",
+            "Paçoca de carne"
+          ],
+          "visitas": []
+        }
+      ]
+    }
+  }
 }

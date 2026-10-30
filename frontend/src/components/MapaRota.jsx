@@ -1,18 +1,61 @@
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip } from "react-leaflet";
+import { useEffect } from "react";
+import {
+  MapContainer,
+  Polyline,
+  TileLayer,
+  CircleMarker,
+  Tooltip,
+  useMap,
+} from "react-leaflet";
+import { haversineKm } from "../services/geolocation";
 import "leaflet/dist/leaflet.css";
-
-export default function MapaRota({ rota }) {
-  if (!rota?.geometria?.length) {
-    return <div className="map-empty">A geometria da rota ficará disponível após o planejamento.</div>;
+function Enquadrar({ positions }) {
+  const map = useMap();
+  useEffect(() => {
+    map.fitBounds(positions, { padding: [25, 25] });
+  }, [map, positions]);
+  return null;
+}
+export function pontoNaDistancia(positions, km) {
+  let soma = 0;
+  for (let i = 1; i < positions.length; i++) {
+    const a = positions[i - 1],
+      b = positions[i],
+      d = haversineKm(
+        { latitude: a[0], longitude: a[1] },
+        { latitude: b[0], longitude: b[1] },
+      );
+    if (soma + d >= km) {
+      const t = d ? (km - soma) / d : 0;
+      return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+    }
+    soma += d;
   }
-  const positions = rota.geometria.map(([longitude, latitude]) => [latitude, longitude]);
-  const center = positions[Math.floor(positions.length / 2)];
-  return <MapContainer center={center} zoom={6} scrollWheelZoom={false} className="route-map">
-    <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-    <Polyline positions={positions} pathOptions={{ color: "#df5e35", weight: 5 }} />
-    {rota.paradas.map((parada, index) => {
-      const point = positions[Math.min(Math.round((parada.progresso_km / rota.distancia_km) * positions.length), positions.length - 1)];
-      return <Marker key={`${parada.progresso_km}-${index}`} position={point}><Tooltip permanent={false}>Parada em {parada.progresso_km} km</Tooltip></Marker>;
-    })}
-  </MapContainer>;
+  return positions.at(-1);
+}
+export default function MapaRota({ rota }) {
+  if (!rota?.geometria?.length)
+    return <p>Mapa indisponível para este percurso.</p>;
+  const positions = rota.geometria.map(([lon, lat]) => [lat, lon]);
+  return (
+    <MapContainer className="route-map" center={positions[0]} zoom={6}>
+      <Enquadrar positions={positions} />
+      <TileLayer
+        attribution="© OpenStreetMap"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <Polyline positions={positions} pathOptions={{ color: "#df5e35" }} />
+      {(rota.paradas || []).map((p) => (
+        <CircleMarker
+          key={p.progresso_km}
+          center={pontoNaDistancia(positions, p.progresso_km)}
+          radius={7}
+        >
+          <Tooltip>
+            Parada estimada: {p.progresso_km} km. Confirme postos disponíveis.
+          </Tooltip>
+        </CircleMarker>
+      ))}
+    </MapContainer>
+  );
 }

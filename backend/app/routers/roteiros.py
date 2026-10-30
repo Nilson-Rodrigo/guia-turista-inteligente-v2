@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request, status
+from fastapi import Depends, APIRouter, BackgroundTasks, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from fastapi.responses import Response
 
@@ -23,15 +23,20 @@ from ..services.providers import buscar_coordenadas, obter_clima, obter_percurso
 from ..services.share import criar_link_compartilhamento
 from ..services.storage import listar_roteiros, remover_roteiro, salvar_roteiro
 
-router = APIRouter(prefix="/api/v1/roteiros", tags=["Roteiros"])
+from ..core.dependencies import obter_usuario, obter_http_client
+from ..core.catalogo import catalogo, DESTINOS
+
+router = APIRouter(dependencies=[Depends(obter_usuario)], prefix="/api/v1/roteiros", tags=["Roteiros"])
 
 
 @router.post("/compartilhar", summary="Cria um link de compartilhamento")
-async def compartilhar(payload: dict[str, object]) -> dict[str, str]:
+async def compartilhar(payload: dict[str, object], background_tasks: BackgroundTasks) -> dict[str, str]:
     canal = str(payload.get("canal", "whatsapp"))
     roteiro = payload.get("roteiro", {})
     if not isinstance(roteiro, dict):
         raise HTTPException(status_code=422, detail="roteiro deve ser um objeto")
+    import logging
+    background_tasks.add_task(logging.getLogger("compartilhamento").info, "Link preparado para canal %s", canal)
     return {"canal": canal, "link": criar_link_compartilhamento(roteiro, canal)}
 
 
@@ -40,6 +45,8 @@ async def exportar_gpx(payload: dict[str, object]) -> Response:
     geometria = payload.get("geometria", [])
     if not isinstance(geometria, list):
         raise HTTPException(status_code=422, detail="geometria deve ser uma lista")
+    if not geometria or not all(isinstance(pt,list) and len(pt)==2 and all(isinstance(v,(int,float)) for v in pt) and -180<=pt[0]<=180 and -90<=pt[1]<=90 for pt in geometria):
+        raise HTTPException(422, "Geometria deve conter pares [longitude, latitude] válidos")
     conteudo = gerar_gpx(
         str(payload.get("origem", "Origem")),
         str(payload.get("destino", "Destino")),
@@ -58,7 +65,7 @@ async def custos(payload: CustosRequest) -> CustosResponse:
 
 
 @router.post("/mapa-rota", response_model=MapaRotaResponse, summary="Retorna geometria, relevo e paradas")
-async def mapa_rota(payload: MapaRotaRequest, request: Request) -> MapaRotaResponse:
+async def mapa_rota(payload: MapaRotaRequest, request: Request, client: httpx.AsyncClient = Depends(obter_http_client)) -> MapaRotaResponse:
     client: httpx.AsyncClient = request.app.state.http_client
     rota = await obter_rota_com_geometria(client, payload)
     rota["altimetria"] = await obter_altimetria(client, rota["geometria"])
@@ -80,6 +87,7 @@ async def stream_guia(
             payload.dias_estadia,
             payload.estilo_viagem,
             get_settings().gemini_api_key,
+            payload.clima_info, payload.atrativos, payload.gastronomia,
         ):
             if await request.is_disconnected():
                 break
@@ -98,6 +106,7 @@ async def planejar_roteiro(
     request: Request,
     background_tasks: BackgroundTasks,
     x_user_id: str | None = Header(default=None),
+    client: httpx.AsyncClient = Depends(obter_http_client),
 ) -> RoteiroResponse:
     """Consulta geocodificação, clima e rota em estágios concorrentes."""
     if x_user_id and not get_session(x_user_id):
@@ -111,10 +120,14 @@ async def planejar_roteiro(
         active_requests.add(request_key)
     client: httpx.AsyncClient = request.app.state.http_client
     try:
+        if await request.is_disconnected():
+            raise HTTPException(499, "Cliente desconectado")
         origem, destino = await asyncio.gather(
             buscar_coordenadas(client, payload.origem_cidade, payload.origem_uf),
             buscar_coordenadas(client, payload.destino_cidade, payload.destino_uf),
         )
+        if await request.is_disconnected():
+            raise HTTPException(499, "Cliente desconectado")
         clima, percurso = await asyncio.gather(
             obter_clima(client, destino["latitude"], destino["longitude"]),
             obter_percurso(client, origem, destino),
@@ -128,7 +141,12 @@ async def planejar_roteiro(
             clima=clima,
             percurso=percurso,
             guia_status="provider-ready",
+            dias_estadia=payload.dias_estadia, estilo_viagem=payload.estilo_viagem,
+            atrativos=[{"id": str(i), "nome": n} for i,n in enumerate(catalogo(payload.destino_cidade,payload.destino_uf).get("atrativos",[]))],
+            gastronomia=catalogo(payload.destino_cidade,payload.destino_uf).get("gastronomia",[]),
         )
+        if await request.is_disconnected():
+            raise HTTPException(499, "Cliente desconectado")
         if x_user_id:
             background_tasks.add_task(salvar_roteiro, x_user_id, roteiro.model_dump())
         return roteiro
@@ -156,3 +174,24 @@ async def deletar_roteiro(
     deleted = await remover_roteiro(x_user_id, roteiro_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Roteiro não encontrado")
+
+@router.get("/destinos")
+async def destinos():
+    return DESTINOS
+
+@router.patch("/{roteiro_id}/visitas")
+async def visitas(roteiro_id: str, payload: dict, user_id: str = Depends(obter_usuario)):
+    from ..services.storage import atualizar_visitas
+    ids = payload.get("visitas", [])
+    if not isinstance(ids,list) or not all(isinstance(i,str) for i in ids):
+        raise HTTPException(422,"Lista de visitas inválida")
+    result = await atualizar_visitas(user_id, roteiro_id, ids)
+    if result is None: raise HTTPException(404,"Viagem não encontrada")
+    return result
+
+@router.post("/altimetria")
+async def altimetria_extra(payload: dict, request: Request):
+    points=payload.get("geometria",[])
+    if not isinstance(points,list) or len(points)>100000 or not all(isinstance(pt,list) and len(pt)==2 and all(isinstance(v,(int,float)) for v in pt) for pt in points):
+        raise HTTPException(422,"Geometria inválida")
+    return await obter_altimetria(request.app.state.http_client, points)

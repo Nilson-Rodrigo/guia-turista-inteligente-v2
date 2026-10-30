@@ -7,6 +7,6 @@ class MapaRotaResponse(BaseModel):
     distancia_km: float
     duracao_minutos: int
     geometria: list[list[float]]
-    rotas_alternativas: list[dict[str, float]]
+    rotas_alternativas: list[dict[str, Any]]
     paradas: list[dict[str, Any]]
     altimetria: dict[str, Any]

@@ -12,6 +12,8 @@ describe("haversineKm", () => {
   });
 
   it("retorna zero para o mesmo ponto", () => {
-    expect(haversineKm({ latitude: 0, longitude: 0 }, { latitude: 0, longitude: 0 })).toBe(0);
+    expect(
+      haversineKm({ latitude: 0, longitude: 0 }, { latitude: 0, longitude: 0 }),
+    ).toBe(0);
   });
 });
