@@ -61,7 +61,7 @@ Reinicie os servidores após editar `.env`.
 - Formulário de origem/destino, UF, duração, perfil e parâmetros de combustão/EV.
 - Geocodificação por município e estado; consultas concorrentes de clima/rota.
 - Leaflet com geometria OSRM e rotas alternativas, quando fornecidas.
-- Perfil de elevação Open-Elevation e ajuste didático de consumo.
+- Perfil de elevação Open-Meteo (Copernicus GLO-90) e ajuste didático de consumo.
 - Custos, pedágios informados manualmente e rateio por passageiros.
 - Projeção de paradas com reserva de 18%, calculadas pela distância acumulada da geometria.
 - Gemini com SDK oficial e streaming SSE; cancelamento do streaming ao trocar de viagem.
@@ -108,8 +108,8 @@ Inclui teste de fluxo da interface com APIs simuladas. Validação desta entrega
 
 1. Frontend: `App.jsx`, `RoteiroForm.jsx`, `MapaRota.jsx`, `services/api.js`, `geolocation.js`, CSS, login e sessão.
 2. Backend: `main.py`, `/planejar`, `core/dependencies.py`, concorrência e circuit breakers.
-3. Dados: schemas, `advanced.py`, `altimetria.py`, custos, autonomia e persistência.
-4. Streaming/QA: `gemini.py`, SSE, `gpx.py`, métricas e suítes de testes.
+3. Dados: schemas, `custos_service.py`, `postos_service.py`, `altimetria_service.py` e `storage_service.py` (JSON em `backend/static/data/`).
+4. Streaming/QA: `gemini_service.py`, SSE, `gpx_service.py`, métricas e `test_roteiros.py`.
 
 Cada aluno deve estudar e conseguir defender o código que apresenta. Este ZIP não inclui `.venv`, `node_modules`, chaves ou dados pessoais.
 

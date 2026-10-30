@@ -1,9 +1,10 @@
 from typing import Any
+import unicodedata
 
 import httpx
 from fastapi import HTTPException
-import unicodedata
-from ..core.catalogo import DESTINOS
+
+from ..core.circuit_breaker import providers_breakers
 
 
 async def buscar_coordenadas(
@@ -11,7 +12,6 @@ async def buscar_coordenadas(
     cidade: str,
     uf: str,
 ) -> dict[str, Any]:
-    fallback = {"latitude": 0.0, "longitude": 0.0, "nome": f"{cidade} - {uf}"}
     try:
         response = await client.get(
             "https://geocoding-api.open-meteo.com/v1/search",
@@ -26,12 +26,20 @@ async def buscar_coordenadas(
         response.raise_for_status()
         resultados = response.json().get("results", [])
         estados = dict(zip("AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO".split(), ["Acre","Alagoas","Amapá","Amazonas","Bahia","Ceará","Distrito Federal","Espírito Santo","Goiás","Maranhão","Mato Grosso","Mato Grosso do Sul","Minas Gerais","Pará","Paraíba","Paraná","Pernambuco","Piauí","Rio de Janeiro","Rio Grande do Norte","Rio Grande do Sul","Rondônia","Roraima","Santa Catarina","São Paulo","Sergipe","Tocantins"]))
-        def norm(t): return ''.join(c for c in unicodedata.normalize('NFD', t.lower()) if unicodedata.category(c)!='Mn')
+
+        def norm(text):
+            return "".join(
+                character
+                for character in unicodedata.normalize("NFD", text.lower())
+                if unicodedata.category(character) != "Mn"
+            )
+
         resultado = next(
             (
                 item
                 for item in resultados
-                if norm(str(item.get("admin1", ""))) in [norm(uf), norm(estados[uf])]
+                if norm(str(item.get("admin1", "")))
+                in [norm(uf), norm(estados[uf])]
             ),
             None,
         )
@@ -77,34 +85,6 @@ async def obter_clima(
         return fallback
 
 
-async def obter_percurso(
-    client: httpx.AsyncClient,
-    origem: dict[str, Any],
-    destino: dict[str, Any],
-) -> dict[str, str]:
-    fallback = {"distancia": "Sem rota direta", "tempo": "N/D"}
-    if origem["latitude"] == 0.0 or destino["latitude"] == 0.0:
-        return fallback
-    try:
-        url = (
-            "https://router.project-osrm.org/route/v1/driving/"
-            f"{origem['longitude']},{origem['latitude']};"
-            f"{destino['longitude']},{destino['latitude']}"
-        )
-        response = await client.get(url, params={"overview": "false"})
-        response.raise_for_status()
-        route = response.json()["routes"][0]
-        distancia_km = route["distance"] / 1000
-        minutos = round(route["duration"] / 60)
-        horas, minutos_restantes = divmod(minutos, 60)
-        tempo = f"{horas}h {minutos_restantes}min" if horas else f"{minutos}min"
-        return {"distancia": f"{distancia_km:.1f} km", "tempo": tempo}
-    except (httpx.HTTPError, IndexError, KeyError, TypeError, ValueError):
-        return fallback
-
-# Circuitos são consultados antes da chamada e alimentados pelos resultados.
-from ..core.circuit_breaker import providers_breakers
-
 def proteger(nome, func):
     async def chamada(*args, **kwargs):
         circuito = providers_breakers[nome]
@@ -112,14 +92,21 @@ def proteger(nome, func):
             raise HTTPException(503, f"Serviço {nome} temporariamente indisponível")
         try:
             resultado = await func(*args, **kwargs)
-            falhou = resultado.get("temperatura") == "N/D" or resultado.get("tempo") == "N/D"
-            if falhou: circuito.record_failure()
-            else: circuito.record_success()
+            falhou = (
+                resultado.get("temperatura") == "N/D"
+                or resultado.get("tempo") == "N/D"
+            )
+            if falhou:
+                circuito.record_failure()
+            else:
+                circuito.record_success()
             return resultado
         except Exception:
             circuito.record_failure()
             raise
+
     return chamada
+
+
 buscar_coordenadas = proteger("geocoding", buscar_coordenadas)
 obter_clima = proteger("weather", obter_clima)
-obter_percurso = proteger("routing", obter_percurso)

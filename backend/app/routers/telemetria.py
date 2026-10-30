@@ -5,7 +5,7 @@ from fastapi.responses import PlainTextResponse
 
 from ..core.circuit_breaker import providers_breakers
 from ..core.concurrency import active_requests
-from ..services.storage import DATA_FILE, _read
+from ..services.storage_service import DATA_FILE, _read
 
 router = APIRouter(prefix="/api/v1/telemetria", tags=["Telemetria"])
 

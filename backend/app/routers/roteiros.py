@@ -15,13 +15,14 @@ from ..schemas.guia import GuiaStreamRequest
 from ..schemas.mapa import MapaRotaResponse
 from ..schemas.viagem_avancada import CustosRequest, CustosResponse, MapaRotaRequest
 from ..schemas.roteiros import RoteiroRequest, RoteiroResponse
-from ..services.advanced import calcular_custos, obter_rota_com_geometria
-from ..services.altimetria import obter_altimetria
-from ..services.gemini import gerar_guia_stream
-from ..services.gpx import gerar_gpx
-from ..services.providers import buscar_coordenadas, obter_clima, obter_percurso
+from ..services.custos_service import calcular_custos
+from ..services.altimetria_service import obter_altimetria
+from ..services.gemini_service import gerar_guia_stream
+from ..services.gpx_service import gerar_gpx
+from ..services.clima_service import buscar_coordenadas, obter_clima
+from ..services.rota_service import obter_percurso, obter_rota_com_geometria
 from ..services.share import criar_link_compartilhamento
-from ..services.storage import listar_roteiros, remover_roteiro, salvar_roteiro
+from ..services.storage_service import listar_roteiros, remover_roteiro, salvar_roteiro
 
 from ..core.dependencies import obter_usuario, obter_http_client
 from ..core.catalogo import catalogo, DESTINOS
@@ -181,7 +182,7 @@ async def destinos():
 
 @router.patch("/{roteiro_id}/visitas")
 async def visitas(roteiro_id: str, payload: dict, user_id: str = Depends(obter_usuario)):
-    from ..services.storage import atualizar_visitas
+    from ..services.storage_service import atualizar_visitas
     ids = payload.get("visitas", [])
     if not isinstance(ids,list) or not all(isinstance(i,str) for i in ids):
         raise HTTPException(422,"Lista de visitas inválida")
