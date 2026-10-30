@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 
-DATA_FILE = Path(__file__).resolve().parents[3] / "static" / "data" / "viagens.json"
+DATA_FILE = Path(__file__).resolve().parents[2] / "static" / "data" / "viagens.json"
 _storage_lock = asyncio.Lock()
 
 

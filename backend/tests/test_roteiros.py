@@ -4,11 +4,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
-from backend.app.services import storage
+from backend.app.services import storage_service as storage
 from backend.app.core.circuit_breaker import providers_breakers, CircuitBreaker
 from backend.app.core.session import sessions
-from backend.app.services.altimetria import calcular_perfil
-from backend.app.services.advanced import calcular_custos
+from backend.app.services.altimetria_service import calcular_perfil
+from backend.app.services.custos_service import calcular_custos
 from backend.app.schemas.viagem_avancada import CustosRequest
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def client(tmp_path,monkeypatch):
             city=req.url.params['name']
             return httpx.Response(200,json={'results':[{'name':city,'admin1':'Pernambuco' if city=='Recife' else 'Bahia','latitude':-8,'longitude':-35}]})
         if 'forecast' in str(req.url): return httpx.Response(200,json={'current':{'temperature_2m':28,'relative_humidity_2m':70,'wind_speed_10m':12}})
-        if 'elevation' in str(req.url): return httpx.Response(200,json={'results':[{'elevation':100},{'elevation':200}]})
+        if 'elevation' in str(req.url): return httpx.Response(200,json={'elevation':[100,200]})
         return httpx.Response(200,json={'routes':[{'distance':800000,'duration':36000,'geometry':{'coordinates':[[-35,-8],[-38,-13]]}}]})
     with TestClient(app) as c:
         original=app.state.http_client
@@ -71,6 +71,7 @@ def test_elevation():assert calcular_perfil([100,200,150])['ganho_subida_m']==10
 def test_map_gpx_stream(client,headers):
     r=client.post('/api/v1/roteiros/mapa-rota',headers=headers,json={'origem_latitude':-8,'origem_longitude':-35,'destino_latitude':-13,'destino_longitude':-38});assert r.status_code==200,r.text
     assert r.json()['altimetria']['disponivel']
+    assert r.json()['altimetria']['elevacoes_m']==[100,200]
     gpx=client.post('/api/v1/roteiros/exportar/gpx',headers=headers,json={'geometria':r.json()['geometria']})
     from xml.etree.ElementTree import fromstring
     assert fromstring(gpx.content).attrib['version']=='1.1'

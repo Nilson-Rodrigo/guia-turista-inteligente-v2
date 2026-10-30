@@ -38,14 +38,17 @@ async def obter_altimetria(
     circuito = providers_breakers["elevation"]
     if circuito.state == "open": return {**calcular_perfil([]), "disponivel": False}
     amostras = [coordenadas[round(i * (len(coordenadas)-1) / 19)] for i in range(20)] if len(coordenadas)>20 else coordenadas
-    locations = "|".join(f"{latitude},{longitude}" for longitude, latitude in amostras)
+    latitudes = ",".join(str(latitude) for _, latitude in amostras)
+    longitudes = ",".join(str(longitude) for longitude, _ in amostras)
     try:
         response = await client.get(
-            "https://api.open-elevation.com/api/v1/lookup",
-            params={"locations": locations},
+            "https://api.open-meteo.com/v1/elevation",
+            params={"latitude": latitudes, "longitude": longitudes},
         )
         response.raise_for_status()
-        elevations = [float(item["elevation"]) for item in response.json()["results"]]
+        elevations = [float(value) for value in response.json()["elevation"]]
+        if len(elevations) != len(amostras):
+            raise ValueError("O serviço retornou quantidade inesperada de elevações")
         circuito.record_success()
         return {**calcular_perfil(elevations), "disponivel": True}
     except (httpx.HTTPError, KeyError, TypeError, ValueError):
