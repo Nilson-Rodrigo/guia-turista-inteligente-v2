@@ -4,104 +4,99 @@ Aplicação web desenvolvida com o microframework **Flask** e Python moderno par
 
 ---
 
-## 🚀 Como Executar o Projeto Localmente
-
-### 1. Clonar o Repositório e Acessar a Pasta
-
-```bash
-git clone https://github.com/maykolsampaio/guia-turista-inteligente.git
-cd guia-turista-inteligente
-```
-
----
-
-## 2. Criar e Ativar o Ambiente Virtual (`.venv`)
-
-=== "Linux / macOS"
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    ```
-
-=== "Windows (PowerShell)"
-    ```powershell
-    python -m venv .venv
-    .\.venv\Scripts\Activate.ps1
-    ```
-
----
-
-### 3. Instalar as Dependências
-
-```bash
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
----
-
-### 4. Configurar as Chaves e Variáveis de Ambiente
-
-Configure as variáveis no seu terminal:
-
-=== "Linux / macOS"
-    ```bash
-    export GEMINI_API_KEY="SUA_CHAVE_GEMINI_AQUI"
-    export GOOGLE_CLIENT_ID="776335673676-dk7od4ljhh43bio4bppf94i8ou0u9v9i.apps.googleusercontent.com"
-    export PORT="8001"
-    ```
-
-=== "Windows (PowerShell)"
-    ```powershell
-    $env:GEMINI_API_KEY="SUA_CHAVE_GEMINI_AQUI"
-    $env:GOOGLE_CLIENT_ID="776335673676-dk7od4ljhh43bio4bppf94i8ou0u9v9i.apps.googleusercontent.com"
-    $env:PORT="8001"
-    ```
-
-> **Obtenção da Chave Gemini:** Acesse o [Google AI Studio](https://aistudio.google.com/), crie sua chave e defina na variável `GEMINI_API_KEY`.
-
----
-
-### 5. Iniciar o Servidor Flask
-
-```bash
-python app.py
-```
-
-Acesse a aplicação no navegador em:  
-👉 **`http://localhost:8001`**
-
----
-
-## 📂 Estrutura do Projeto
+## Arquitetura atual
 
 ```text
-├── app.py                 # [A IMPLEMENTAR] Aplicação Flask (Autenticação Google no Python com Sessão, SSR e Rotas)
-├── config.py              # Constantes, UFs do Brasil, Client ID do Google e variáveis de ambiente
-├── services.py            # [A IMPLEMENTAR] Integrações com APIs externas via HTTPX (Open-Meteo, OSRM e validação de token Google OAuth)
-├── planejamento.py        # [A IMPLEMENTAR] Módulo de IA Gemini para geração de guia turístico e gastronomia
-├── templates/
-│   └── index.html         # Frontend Server-Side Rendering (Jinja2, Google Login URI, Cards e Accordion)
-├── static/
-│   ├── css/style.css      # Estilização responsiva em CSS
-│   ├── js/app.js          # Comportamento de interface (Accordion e bloqueio de cliques)
-│   └── data/
-│       ├── estados_brasil.json # Mapeamento oficial das 27 UFs do Brasil
-│       └── viagens.json        # Persistência em JSON dos roteiros dos usuários logados
-├── requirements.txt       # Lista de dependências Python
-└── README.md              # Documentação e instruções de execução
+├── backend/       API FastAPI, serviços, schemas Pydantic e testes pytest
+├── frontend/      SPA React/Vite, Leaflet, SSE e testes Vitest
+├── static/data/   Persistência JSON dos roteiros
+├── app.py         Flask legado, mantido para referência
+└── CHECKLIST_ATIVIDADE.md
 ```
 
----
+A versão atual usa FastAPI na porta `8001` e React/Vite na porta `5173`.
 
-## 🧪 Qualidade de Código e Linter
-
-Para validar o código com as ferramentas da disciplina:
+## Configuração e execução
 
 ```bash
-# Formatação e checagem de boas práticas (PEP 8)
-ruff check . --fix
-
-# Checagem estática de tipos (Type Hints)
-mypy app.py services.py planejamento.py config.py
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env
+uvicorn backend.app.main:app --reload --port 8001
 ```
+
+Em outro terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Preencha `backend/.env` quando necessário:
+
+```env
+GEMINI_API_KEY=
+GOOGLE_CLIENT_ID=
+CORS_ORIGINS=http://localhost:5173
+```
+
+Acesse `http://localhost:5173`, `http://localhost:8001/docs` e
+`http://localhost:8001/metrics`.
+
+## Endpoints principais
+
+| Endpoint | Função |
+| --- | --- |
+| `POST /api/v1/auth/demo` | Sessão visitante por 2 horas |
+| `POST /api/v1/roteiros/planejar` | Planejamento com clima e rota |
+| `POST /api/v1/roteiros/stream-guia` | Guia turístico por SSE |
+| `POST /api/v1/roteiros/mapa-rota` | Geometria, alternativas, paradas e relevo |
+| `POST /api/v1/roteiros/custos` | Custos de combustível/energia e rateio |
+| `GET /api/v1/roteiros` | Histórico por `X-User-Id` |
+| `DELETE /api/v1/roteiros/{id}` | Excluir roteiro |
+| `POST /api/v1/roteiros/exportar/gpx` | Exportar GPX 1.1 |
+| `POST /api/v1/roteiros/compartilhar` | Link para WhatsApp |
+| `GET /api/v1/telemetria/resumo` | Resumo operacional |
+
+## Testes
+
+```bash
+# Backend
+.venv/bin/pytest backend/tests -q
+
+# Frontend
+cd frontend
+npm test
+npm run build
+```
+
+## Organização da equipe
+
+- **Frontend:** `frontend/src`, formulário, Leaflet, SSE, geolocalização e UX.
+- **Backend core:** `backend/app/main.py`, autenticação e orquestração assíncrona.
+- **Dados e altimetria:** schemas, custos, autonomia, Open-Elevation e persistência.
+- **QA e streaming:** SSE, GPX, telemetria, testes e documentação.
+
+Consulte [CHECKLIST_ATIVIDADE.md](CHECKLIST_ATIVIDADE.md) antes de assumir uma tarefa.
+Marque uma etapa somente após validá-la com teste ou execução local.
+
+## Commits e colaboração
+
+```bash
+git pull --rebase origin main
+git diff --check
+git add caminho/dos/arquivos
+git commit -m "feat: descreve a alteração em português"
+git push origin main
+```
+
+Mensagens devem ser objetivas e em português:
+
+- `feat: adiciona exportação de roteiros em GPX`
+- `fix: corrige validação de UF no planejamento`
+- `test: cobre cálculo de distância Haversine`
+- `docs: atualiza instruções de execução`
+
+Não versionar `.venv/`, `node_modules/`, `frontend/dist/`, arquivos `.env` ou chaves de API.

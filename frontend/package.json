@@ -1,0 +1,26 @@
+{
+  "name": "guia-turista-inteligente-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "leaflet": "^1.9.4",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-leaflet": "^5.0.0",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "latest",
+    "@testing-library/react": "latest",
+    "jsdom": "latest",
+    "vitest": "latest"
+  }
+}

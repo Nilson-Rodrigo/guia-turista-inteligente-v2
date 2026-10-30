@@ -50,8 +50,9 @@ lock_requisicoes = threading.Lock()
 
 def sanitizar_entrada(texto: str, max_len: int = 80) -> str:
     """Higieniza entradas de texto removendo tags HTML, caracteres de controle e espaços extras."""
-    # TODO (Aluno 4): Implementar a sanitização de texto via regex r'<[^>]*>'
-    pass
+    texto = re.sub(r"<[^>]*>", "", texto or "")
+    texto = re.sub(r"[\x00-\x1f\x7f]", "", texto)
+    return texto.strip()[:max_len]
 
 
 def criar_estrutura_padrao_viagens() -> dict[str, Any]:
@@ -114,8 +115,16 @@ def remover_viagem_usuario(user_id: str, viagem_id: str) -> None:
 @app.route("/", methods=["GET"])
 def index():
     """Renderiza a página principal (SSR com Jinja2)."""
-    # TODO (Aluno 3): Recuperar usuário da sessão, buscar viagens e renderizar index.html
-    pass
+    usuario = session.get("usuario")
+    user_id = session.get("user_id")
+    viagens = obter_viagens_usuario(user_id) if user_id else []
+    return render_template(
+        "index.html",
+        usuario=usuario,
+        viagens=viagens,
+        ufs=sorted(ESTADOS_BRASIL),
+        client_id=GOOGLE_CLIENT_ID,
+    )
 
 
 @app.route("/auth/google/callback", methods=["GET", "POST"])
@@ -128,8 +137,15 @@ def google_callback():
 @app.route("/auth/demo", methods=["GET", "POST"])
 def login_demo():
     """Modo Visitante para desenvolvimento e testes locais."""
-    # TODO (Aluno 3): Criar sessão volátil em memória para 'Viajante Convidado'
-    pass
+    user_id = session.get("user_id") or f"visitante-{uuid.uuid4().hex}"
+    session["user_id"] = user_id
+    session["usuario"] = {
+        "nome": "Viajante Convidado",
+        "email": "visitante@local",
+        "foto": "https://ui-avatars.com/api/?name=Viajante+Convidado&background=0d6efd&color=fff",
+    }
+    viagens_visitante_memoria.setdefault(user_id, [])
+    return redirect(url_for("index"))
 
 
 @app.route("/auth/logout", methods=["GET", "POST"])
@@ -142,8 +158,50 @@ def logout():
 @app.route("/viagens/criar", methods=["GET", "POST"])
 def criar_viagem():
     """Processa o formulário de criação com deduplicação (locks) e orquestração de APIs."""
-    # TODO (Aluno 3): Implementar lock_requisicoes, orquestração com services/planejamento e Padrão PRG
-    pass
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("index"))
+
+    origem = sanitizar_entrada(request.form.get("origem_cidade", ""))
+    origem_uf = sanitizar_entrada(request.form.get("origem_uf", ""), 2).upper()
+    destino = sanitizar_entrada(request.form.get("destino_cidade", ""))
+    destino_uf = sanitizar_entrada(request.form.get("destino_uf", ""), 2).upper()
+    if not origem or not origem_uf or not destino or not destino_uf:
+        return redirect(url_for("index"))
+
+    with httpx.Client() as client:
+        coordenadas_origem = buscar_coordenadas(client, origem, origem_uf)
+        coordenadas_destino = buscar_coordenadas(client, destino, destino_uf)
+
+    if not coordenadas_origem or not coordenadas_destino:
+        coordenadas_origem = (0.0, 0.0, f"{origem} - {origem_uf}")
+        coordenadas_destino = (0.0, 0.0, f"{destino} - {destino_uf}")
+
+    lat_origem, lon_origem, nome_origem = coordenadas_origem
+    lat_destino, lon_destino, nome_destino = coordenadas_destino
+    with httpx.Client() as client:
+        clima = obter_clima(client, lat_destino, lon_destino) or {
+            "temperatura": "N/D",
+            "umidade": "N/D",
+            "vento": "N/D",
+        }
+        percurso = obter_percurso(
+            client, lat_origem, lon_origem, lat_destino, lon_destino
+        ) or {"distancia": "N/D", "tempo": "N/D"}
+
+    guia_resultado = obter_guia_destino_com_diagnostico(nome_destino)
+    dicas_destino = guia_resultado[0] if guia_resultado else "Guia indisponível no momento."
+    viagem = {
+        "id": uuid.uuid4().hex,
+        "origem": nome_origem,
+        "destino": nome_destino,
+        "clima": clima,
+        "percurso": percurso,
+        "dicas_destino": dicas_destino,
+        "criado_em": datetime.now().isoformat(),
+    }
+    viagens_visitante_memoria.setdefault(user_id, []).append(viagem)
+    return redirect(url_for("index"))
 
 
 @app.route("/viagens/deletar/<string:viagem_id>", methods=["GET", "POST"])
